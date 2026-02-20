@@ -29,7 +29,7 @@ def _call_gemini(client, model_id, prompt):
 
 def _clean_summary(text: str) -> str:
     """去除 Gemini 可能輸出的開場白，直接從固定標題行開始。"""
-    header = "以下是過去 24 小時內的熱門人工智慧(AI) 新聞摘要："
+    header = "您好。以下是過去 24 小時內的熱門人工智慧(AI) 新聞摘要："
     lines = text.splitlines()
     for i, line in enumerate(lines):
         if header in line:
@@ -56,7 +56,7 @@ def generate_news_summary():
         "請搜尋過去 24 小時內最熱門的 10 則 AI（人工智慧）新聞。"
         "嚴格以繁體中文輸出，不含英文標題或連結。"
         "輸出格式如下，第一行固定為：\n"
-        "以下是過去 24 小時內的熱門人工智慧(AI) 新聞摘要：\n"
+        "您好。以下是過去 24 小時內的熱門人工智慧(AI) 新聞摘要：\n"
         "接著以編號列表 1-10 列出每則新聞的繁體中文摘要，每則一行，簡潔扼要。"
         "禁止輸出『好的』、『請稍等』等任何開場白，直接從標題行開始。"
     )
@@ -75,7 +75,7 @@ def generate_news_summary():
 def make_fallback_summary():
     """Dry-run 模式下、無 API key 時使用的本地假摘要。"""
     return (
-        "以下是過去 24 小時內的熱門人工智慧(AI) 新聞摘要：\n"
+        "您好。以下是過去 24 小時內的熱門人工智慧(AI) 新聞摘要：\n"
         "（DRY-RUN 模式：未設定 GEMINI_API_KEY，使用本地假摘要）\n\n"
         "1. OpenAI 發布新一代模型，效能大幅提升\n"
         "2. Google DeepMind 在蛋白質預測取得突破\n"
