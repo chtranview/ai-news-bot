@@ -1,5 +1,4 @@
-google-generativeai
+google-genai
 line-bot-sdk<3.0.0
-requests
-beautifulsoup4
-googlesearch-python
+tenacity
+flask

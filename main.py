@@ -1,95 +1,87 @@
 import os
 import sys
+import argparse
 import logging
-import requests
-from bs4 import BeautifulSoup
-from googlesearch import search
-import google.generativeai as genai
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from google import genai
+from google.genai.types import Tool, GenerateContentConfig, GoogleSearch
 from linebot import LineBotApi
 from linebot.models import TextSendMessage
 from linebot.exceptions import LineBotApiError
 
-# Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def get_ai_news(query="AI Artificial Intelligence news", num_results=10):
-    """Searches for AI news relative to the last 24 hours."""
-    logging.info(f"Searching for news with query: {query}")
-    news_items = []
-    try:
-        # Note: googlesearch-python might not support time-range filtering directly in all versions.
-        # We search and then try to extract content.
-        # For a production bot, a dedicated News API (like GNews or Bing News API) is more robust.
-        # Here we stick to the user request of using "Google Search or crawler".
-        search_results = search(query, num_results=num_results, advanced=True)
-        
-        for result in search_results:
-            try:
-                # Basic content extraction
-                response = requests.get(result.url, timeout=10)
-                if response.status_code == 200:
-                    soup = BeautifulSoup(response.content, 'html.parser')
-                    title = soup.title.string if soup.title else result.title
-                    
-                    # specific cleanup can be added here
-                    # just verify it's not a captcha or blockage
-                    if "captcha" in title.lower():
-                        continue
+@retry(
+    retry=retry_if_exception_type(Exception),
+    wait=wait_exponential(multiplier=1, min=4, max=60),
+    stop=stop_after_attempt(5)
+)
+def _call_gemini(client, model_id, prompt):
+    """呼叫 Gemini API，附帶 Google Search Grounding（有 tenacity 自動重試）。"""
+    return client.models.generate_content(
+        model=model_id,
+        contents=prompt,
+        config=GenerateContentConfig(
+            tools=[Tool(google_search=GoogleSearch())],
+            response_modalities=["TEXT"],
+        )
+    )
 
-                    news_items.append({
-                        "title": title.strip(),
-                        "url": result.url,
-                        # We limit content to avoid token limits, just passing title and URL is often enough for summary
-                        # or a small snippet if available.
-                        "snippet": result.description if hasattr(result, 'description') else "" 
-                    })
-            except Exception as e:
-                logging.warning(f"Failed to fetch {result.url}: {e}")
-                continue
-            
-            if len(news_items) >= num_results:
-                break
-                
-    except Exception as e:
-        logging.error(f"Error during search: {e}")
-        
-    return news_items
-
-def summarize_news(news_items):
-    """Summarizes the list of news items using Gemini."""
-    if not news_items:
-        return "No news found today."
-
-    api_key = os.getenv("GOOGLE_API_KEY")
+def generate_news_summary():
+    """使用 Gemini + Google Search Grounding 生成 AI 新聞摘要（繁體中文）。"""
+    api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        logging.error("GOOGLE_API_KEY not found.")
+        logging.error("GEMINI_API_KEY not found.")
         return "Error: Gemini API key missing."
 
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-pro')
+    logging.info("Initializing Gemini client...")
+    client = genai.Client(api_key=api_key)
+    model_id = "gemini-2.0-flash"
 
-    prompt = "Here are top AI news titles and URLs. Please summarize them into a concise daily update suitable for a Line message. Format it as a list with bullet points. Include the link for each item if possible, but keep it short.\n\n"
-    for item in news_items:
-        prompt += f"- {item['title']} : {item['url']}\n"
+    prompt = (
+        "請搜尋過去 24 小時內最熱門的 10 則 AI（人工智慧）新聞。"
+        "請嚴格以繁體中文輸出，不要包含英文標題或連結。"
+        "請從第一行開始，直接輸出以下固定標題（不要加任何其他開場白或說明）：\n"
+        "「以下是過去 24 小時內的熱門人工智慧(AI) 新聞摘要：」\n"
+        "然後以編號列表（1-10）依序列出每則新聞的繁體中文摘要，每則簡潔扼要。"
+    )
 
+    logging.info("Generating content with Google Search Grounding...")
     try:
-        response = model.generate_content(prompt)
-        return response.text
+        response = _call_gemini(client, model_id, prompt)
+        if response.text:
+            return response.text
+        logging.warning("No text returned in response.")
+        return "No news summary generated."
     except Exception as e:
-        logging.error(f"Gemini API error: {e}")
+        logging.error(f"Gemini API error (after retries): {e}")
         return "Error generating summary."
 
+def make_fallback_summary():
+    """Dry-run 模式下、無 API key 時使用的本地假摘要。"""
+    return (
+        "以下是過去 24 小時內的熱門人工智慧(AI) 新聞摘要：\n"
+        "（DRY-RUN 模式：未設定 GEMINI_API_KEY，使用本地假摘要）\n\n"
+        "1. OpenAI 發布新一代模型，效能大幅提升\n"
+        "2. Google DeepMind 在蛋白質預測取得突破\n"
+        "3. 台灣企業加速導入 AI 應用\n"
+        "4. 歐盟 AI 法案正式生效，影響全球科技業\n"
+        "5. NVIDIA 發表新一代 AI 晶片架構\n"
+        "6. Meta 開源新大型語言模型\n"
+        "7. 微軟 Copilot 整合更多辦公應用\n"
+        "8. AI 生成影片技術持續進化\n"
+        "9. 醫療 AI 輔助診斷準確率創新高\n"
+        "10. AI 資安威脅引發各國關注"
+    )
+
 def send_line_message(message):
-    """Sends the summary to Line."""
+    """推播訊息至 LINE。"""
     channel_access_token = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
     user_id = os.getenv("LINE_USER_ID")
-
     if not channel_access_token or not user_id:
         logging.error("Line API credentials missing.")
         return
-
     line_bot_api = LineBotApi(channel_access_token)
-
     try:
         line_bot_api.push_message(user_id, TextSendMessage(text=message))
         logging.info("Message sent to Line successfully.")
@@ -97,15 +89,33 @@ def send_line_message(message):
         logging.error(f"Line API error: {e}")
 
 def main():
+    parser = argparse.ArgumentParser(description="AI News Bot")
+    parser.add_argument("--dry-run", action="store_true", help="只印出摘要，不發 LINE 訊息")
+    args = parser.parse_args()
+
     logging.info("Starting AI News Bot...")
-    news = get_ai_news()
-    if news:
-        summary = summarize_news(news)
-        logging.info("Summary generated.")
-        print(summary) # For debug
+
+    if args.dry_run and not os.getenv("GEMINI_API_KEY"):
+        logging.info("[DRY-RUN] GEMINI_API_KEY not set, using fallback summary.")
+        summary = make_fallback_summary()
+    else:
+        summary = generate_news_summary()
+
+    logging.info("Summary generated.")
+    print(summary)
+
+    if args.dry_run:
+        print("\n[DRY-RUN] LINE message not sent.")
+        return
+
+    if summary and "Error" not in summary:
         send_line_message(summary)
     else:
-        logging.info("No news found to summarize.")
+        logging.warning("Skipping Line message due to error or empty summary.")
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        print(f"[ERROR] {e}")
+        sys.exit(1)
