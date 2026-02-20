@@ -27,6 +27,19 @@ def _call_gemini(client, model_id, prompt):
         )
     )
 
+def _clean_summary(text: str) -> str:
+    """去除 Gemini 可能輸出的開場白，直接從固定標題行開始。"""
+    header = "以下是過去 24 小時內的熱門人工智慧(AI) 新聞摘要："
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if header in line:
+            return "\n".join(lines[i:]).strip()
+    # 找不到標題行時，去除空行和不含數字編號的前置行
+    for i, line in enumerate(lines):
+        if line.strip() and (line.strip()[0].isdigit() or line.strip().startswith("以下")):
+            return "\n".join(lines[i:]).strip()
+    return text.strip()
+
 def generate_news_summary():
     """使用 Gemini + Google Search Grounding 生成 AI 新聞摘要（繁體中文）。"""
     api_key = os.getenv("GEMINI_API_KEY")
@@ -39,18 +52,20 @@ def generate_news_summary():
     model_id = "gemini-2.0-flash"
 
     prompt = (
+        "你是一個新聞播報機器人。請直接輸出內容，禁止加任何開場白、問候語、確認句或說明文字。"
         "請搜尋過去 24 小時內最熱門的 10 則 AI（人工智慧）新聞。"
-        "請嚴格以繁體中文輸出，不要包含英文標題或連結。"
-        "請從第一行開始，直接輸出以下固定標題（不要加任何其他開場白或說明）：\n"
-        "「以下是過去 24 小時內的熱門人工智慧(AI) 新聞摘要：」\n"
-        "然後以編號列表（1-10）依序列出每則新聞的繁體中文摘要，每則簡潔扼要。"
+        "嚴格以繁體中文輸出，不含英文標題或連結。"
+        "輸出格式如下，第一行固定為：\n"
+        "以下是過去 24 小時內的熱門人工智慧(AI) 新聞摘要：\n"
+        "接著以編號列表 1-10 列出每則新聞的繁體中文摘要，每則一行，簡潔扼要。"
+        "禁止輸出『好的』、『請稍等』等任何開場白，直接從標題行開始。"
     )
 
     logging.info("Generating content with Google Search Grounding...")
     try:
         response = _call_gemini(client, model_id, prompt)
         if response.text:
-            return response.text
+            return _clean_summary(response.text)
         logging.warning("No text returned in response.")
         return "No news summary generated."
     except Exception as e:
