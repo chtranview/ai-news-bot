@@ -194,6 +194,7 @@ $env:LINE_USER_ID="你的userId"
 
 ## 常見問題
 
+
 | 問題 | 解法 |
 |------|------|
 | 沒收到 LINE 訊息 | 檢查 `LINE_CHANNEL_ACCESS_TOKEN`、`LINE_USER_ID` |
