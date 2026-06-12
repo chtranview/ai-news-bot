@@ -44,7 +44,7 @@ def generate_news_summary():
     genai.configure(api_key=api_key)
     
     # 使用舊版核心嚴格要求的 models/ 前綴
-    model = genai.GenerativeModel(model_name="models/gemini-1.5-flash")
+    model = genai.GenerativeModel(model_name="models/gemini-1.5-pro")
 
     prompt = (
         "你是一個新聞播報機器人。請直接輸出內容，禁止加任何開場白、問候語、確認句或說明文字。"
