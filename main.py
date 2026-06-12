@@ -49,7 +49,7 @@ def generate_news_summary():
 
     logging.info("Initializing Gemini client...")
     client = genai.Client(api_key=api_key)
-    model_id = "models/gemini-2.0-flash"
+    model_id = "models/gemini-2.5-flash"
 
     prompt = (
         "你是一個新聞播報機器人。請直接輸出內容，禁止加任何開場白、問候語、確認句或說明文字。"
