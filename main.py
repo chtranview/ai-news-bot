@@ -22,7 +22,8 @@ def _call_gemini(model, prompt):
     # 這裡 模型 與 聯網工具 是完全解耦的，絕對不會被框架死鎖模型！
     return model.generate_content(
         contents=prompt,
-        tools='google_search'
+        # 改用標準字典結構封裝，確保舊版核心完美識別 Google 搜尋增強
+        tools=[{"google_search": {}}]
     )
 
 def _clean_summary(text: str) -> str:
