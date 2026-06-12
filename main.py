@@ -48,8 +48,8 @@ def generate_news_summary():
         return "Error: Gemini API key missing."
 
     logging.info("Initializing Gemini client...")
-    client = genai.Client(api_key=api_key)
-    model_id = "models/gemini-2.5-flash"
+    client = genai.Client(api_key=api_key, http_options={'api_version': 'v1alpha'})
+    model_id = "gemini-2.5-flash"
 
     prompt = (
         "你是一個新聞播報機器人。請直接輸出內容，禁止加任何開場白、問候語、確認句或說明文字。"
@@ -69,8 +69,8 @@ def generate_news_summary():
         logging.warning("No text returned in response.")
         return "No news summary generated."
     except Exception as e:
-        logging.error(f"Gemini API error (after retries): {e}")
-        return "Error generating summary."
+    logging.error(f"Gemini API error (after retries): {e}")
+    raise RuntimeError(f"Gemini 執行失敗: {e}")
 
 def make_fallback_summary():
     """Dry-run 模式下、無 API key 時使用的本地假摘要。"""
