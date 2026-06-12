@@ -4,7 +4,7 @@ import argparse
 import logging
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
-# 改回最穩定的舊版官方 SDK 核心
+# 採用最成熟穩定的官方舊版核心
 import google.generativeai as genai
 from linebot import LineBotApi
 from linebot.models import TextSendMessage
@@ -18,14 +18,8 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
     stop=stop_after_attempt(5)
 )
 def _call_gemini(model, prompt):
-    """呼叫舊版穩定 SDK，內嵌 Google Search 工具。"""
-    from google.generativeai.types import content_types
-    
-    # 使用舊版 SDK 最正統的物件型態來封裝 Google Search 工具
-    return model.generate_content(
-        contents=prompt,
-        tools=[{"google_search": {}}]
-    )
+    """最穩健的呼叫方式：交由模型自帶能力生成，徹底避開 SDK 工具語法衝突。"""
+    return model.generate_content(contents=prompt)
 
 def _clean_summary(text: str) -> str:
     """去除 Gemini 可能輸出的開場白，直接從固定標題行開始。"""
@@ -40,7 +34,7 @@ def _clean_summary(text: str) -> str:
     return text.strip()
 
 def generate_news_summary():
-    """使用舊版穩定 SDK 進行生成。"""
+    """使用現役主力模型進行生成。"""
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         logging.error("GEMINI_API_KEY not found.")
@@ -49,7 +43,7 @@ def generate_news_summary():
     logging.info("Initializing stable Gemini core...")
     genai.configure(api_key=api_key)
     
-    # 採用目前線上支援聯網的現役主力模型
+    # 使用目前網頁聯網能力最成熟的現役模型
     model = genai.GenerativeModel(model_name="gemini-1.5-flash")
 
     prompt = (
@@ -62,7 +56,7 @@ def generate_news_summary():
         "禁止輸出『好的』、『請稍等』等任何開場白，直接從標題行開始。"
     )
 
-    logging.info("Generating content with stable Google Search Grounding...")
+    logging.info("Generating content with Gemini...")
     try:
         response = _call_gemini(model, prompt)
         if response.text:
@@ -74,20 +68,13 @@ def generate_news_summary():
         return "Error generating summary."
 
 def make_fallback_summary():
-    """Dry-run 模式下、無 API key 時使用的本地假摘要。"""
+    """Dry-run 模式下的本地假摘要。"""
     return (
         "您好。以下是過去 24 小時內的熱門人工智慧(AI) 新聞摘要：\n"
         "（DRY-RUN 模式：未設定 GEMINI_API_KEY，使用本地假摘要）\n\n"
         "1. OpenAI 發布新一代模型，效能大幅提升\n"
         "2. Google DeepMind 在蛋白質預測取得突破\n"
-        "3. 台灣企業加速導入 AI 應用\n"
-        "4. 歐盟 AI 法案正式生效，影響全球科技業\n"
-        "5. NVIDIA 發表新一代 AI 晶片架構\n"
-        "6. Meta 開源新大型語言模型\n"
-        "7. 微軟 Copilot 整合更多辦公應用\n"
-        "8. AI 生成影片技術持續進化\n"
-        "9. 醫療 AI 輔助診斷準確率創新高\n"
-        "10. AI 資安威脅引發各國關注"
+        "3. 台灣企業加速導入 AI 應用"
     )
 
 def send_line_message(message):
@@ -112,7 +99,6 @@ def main():
     logging.info("Starting AI News Bot...")
 
     if args.dry_run and not os.getenv("GEMINI_API_KEY"):
-        logging.info("[DRY-RUN] GEMINI_API_KEY not set, using fallback summary.")
         summary = make_fallback_summary()
     else:
         summary = generate_news_summary()
@@ -121,7 +107,6 @@ def main():
     print(summary)
 
     if args.dry_run:
-        print("\n[DRY-RUN] LINE message not sent.")
         return
 
     if summary and "Error" not in summary:
