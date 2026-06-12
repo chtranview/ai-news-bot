@@ -21,6 +21,9 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
+        # 1. 強制完全卸載新版 SDK，防止快取殘留
+        pip uninstall -y google-genai google-generativeai || true
+        # 2. 使用 --no-cache-dir 確保從 PyPI 乾淨下載我們指定的穩定版
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
     - name: Run AI News Bot
