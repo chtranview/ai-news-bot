@@ -43,8 +43,8 @@ def generate_news_summary():
     logging.info("Initializing stable Gemini core...")
     genai.configure(api_key=api_key)
     
-    # 使用目前網頁聯網能力最成熟的現役模型
-    model = genai.GenerativeModel(model_name="gemini-1.5-flash")
+    # 使用舊版核心嚴格要求的 models/ 前綴
+    model = genai.GenerativeModel(model_name="models/gemini-1.5-flash")
 
     prompt = (
         "你是一個新聞播報機器人。請直接輸出內容，禁止加任何開場白、問候語、確認句或說明文字。"
