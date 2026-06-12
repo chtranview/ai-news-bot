@@ -4,8 +4,9 @@ import argparse
 import logging
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
-# 採用最成熟穩定的官方舊版核心
-import google.generativeai as genai
+# 使用最新版標準 SDK
+from google import genai
+from google.genai import types
 from linebot import LineBotApi
 from linebot.models import TextSendMessage
 from linebot.exceptions import LineBotApiError
@@ -17,9 +18,17 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
     wait=wait_exponential(multiplier=1, min=4, max=60),
     stop=stop_after_attempt(5)
 )
-def _call_gemini(model, prompt):
-    """最穩健的呼叫方式：交由模型自帶能力生成，徹底避開 SDK 工具語法衝突。"""
-    return model.generate_content(contents=prompt)
+def _call_gemini(client, model_id, prompt):
+    """呼叫最新版 Gemini API，改用字串工具宣告，繞過 SDK 內部硬編碼 Bug。"""
+    return client.models.generate_content(
+        model=model_id,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            # 關鍵防禦：直接用字串宣告工具，不使用 GoogleSearch() 類別
+            tools=[{"google_search": {}}],
+            response_modalities=["TEXT"],
+        )
+    )
 
 def _clean_summary(text: str) -> str:
     """去除 Gemini 可能輸出的開場白，直接從固定標題行開始。"""
@@ -34,17 +43,17 @@ def _clean_summary(text: str) -> str:
     return text.strip()
 
 def generate_news_summary():
-    """使用現役主力模型進行生成。"""
+    """使用最新現役模型與標準 SDK 進行生成。"""
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         logging.error("GEMINI_API_KEY not found.")
         return "Error: Gemini API key missing."
 
-    logging.info("Initializing stable Gemini core...")
-    genai.configure(api_key=api_key)
+    logging.info("Initializing stable modern Gemini client...")
+    client = genai.Client(api_key=api_key)
     
-    # 使用舊版核心嚴格要求的 models/ 前綴
-    model = genai.GenerativeModel(model_name="models/gemini-1.5-pro")
+    # 使用當前全線支援、維護期最長的主力現役模型
+    model_id = "gemini-2.5-flash"
 
     prompt = (
         "你是一個新聞播報機器人。請直接輸出內容，禁止加任何開場白、問候語、確認句或說明文字。"
@@ -56,9 +65,9 @@ def generate_news_summary():
         "禁止輸出『好的』、『請稍等』等任何開場白，直接從標題行開始。"
     )
 
-    logging.info("Generating content with Gemini...")
+    logging.info("Generating content with Gemini 2.5 and Search Grounding...")
     try:
-        response = _call_gemini(model, prompt)
+        response = _call_gemini(client, model_id, prompt)
         if response.text:
             return _clean_summary(response.text)
         logging.warning("No text returned in response.")
@@ -71,10 +80,7 @@ def make_fallback_summary():
     """Dry-run 模式下的本地假摘要。"""
     return (
         "您好。以下是過去 24 小時內的熱門人工智慧(AI) 新聞摘要：\n"
-        "（DRY-RUN 模式：未設定 GEMINI_API_KEY，使用本地假摘要）\n\n"
-        "1. OpenAI 發布新一代模型，效能大幅提升\n"
-        "2. Google DeepMind 在蛋白質預測取得突破\n"
-        "3. 台灣企業加速導入 AI 應用"
+        "1. OpenAI 發布新一代模型，效能大幅提升"
     )
 
 def send_line_message(message):
