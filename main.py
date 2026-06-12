@@ -2,6 +2,12 @@ import os
 import sys
 import argparse
 import logging
+
+# ==================== 強制修正 SDK 內部聯網 Bug ====================
+os.environ["GEMINI_MODEL"] = "gemini-2.5-flash"
+os.environ["GEMINI_API_VERSION"] = "v1alpha"
+# ==================================================================
+
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from google import genai
 from google.genai.types import Tool, GenerateContentConfig, GoogleSearch
