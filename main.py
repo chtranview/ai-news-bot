@@ -19,11 +19,14 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 )
 def _call_gemini(model, prompt):
     """呼叫舊版穩定 SDK，內嵌 Google Search 工具。"""
-    # 這裡 模型 與 聯網工具 是完全解耦的，絕對不會被框架死鎖模型！
+    from google.generativeai.types import content_types
+    
+    # 使用舊版 SDK 最正統的物件型態來封裝 Google Search 工具
+    search_tool = content_types.to_tool([{"google_search": {}}])
+    
     return model.generate_content(
         contents=prompt,
-        # 改用標準字典結構封裝，確保舊版核心完美識別 Google 搜尋增強
-        tools=[{"google_search": {}}]
+        tools=search_tool
     )
 
 def _clean_summary(text: str) -> str:
