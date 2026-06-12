@@ -22,11 +22,9 @@ def _call_gemini(model, prompt):
     from google.generativeai.types import content_types
     
     # 使用舊版 SDK 最正統的物件型態來封裝 Google Search 工具
-    search_tool = content_types.to_tool([{"google_search": {}}])
-    
     return model.generate_content(
         contents=prompt,
-        tools=search_tool
+        tools=[{"google_search": {}}]
     )
 
 def _clean_summary(text: str) -> str:
