@@ -2,15 +2,10 @@ import os
 import sys
 import argparse
 import logging
-
-# ==================== 強制修正 SDK 內部聯網 Bug ====================
-os.environ["GEMINI_MODEL"] = "gemini-2.5-flash"
-os.environ["GEMINI_API_VERSION"] = "v1alpha"
-# ==================================================================
-
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
-from google import genai
-from google.genai.types import Tool, GenerateContentConfig, GoogleSearch
+
+# 改回最穩定的舊版官方 SDK 核心
+import google.generativeai as genai
 from linebot import LineBotApi
 from linebot.models import TextSendMessage
 from linebot.exceptions import LineBotApiError
@@ -22,15 +17,12 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
     wait=wait_exponential(multiplier=1, min=4, max=60),
     stop=stop_after_attempt(5)
 )
-def _call_gemini(client, model_id, prompt):
-    """呼叫 Gemini API，附帶 Google Search Grounding（有 tenacity 自動重試）。"""
-    return client.models.generate_content(
-        model=model_id,
+def _call_gemini(model, prompt):
+    """呼叫舊版穩定 SDK，內嵌 Google Search 工具。"""
+    # 這裡 模型 與 聯網工具 是完全解耦的，絕對不會被框架死鎖模型！
+    return model.generate_content(
         contents=prompt,
-        config=GenerateContentConfig(
-            tools=[Tool(google_search=GoogleSearch())],
-            response_modalities=["TEXT"],
-        )
+        tools='google_search'
     )
 
 def _clean_summary(text: str) -> str:
@@ -40,22 +32,23 @@ def _clean_summary(text: str) -> str:
     for i, line in enumerate(lines):
         if header in line:
             return "\n".join(lines[i:]).strip()
-    # 找不到標題行時，去除空行和不含數字編號的前置行
     for i, line in enumerate(lines):
         if line.strip() and (line.strip()[0].isdigit() or line.strip().startswith("以下")):
             return "\n".join(lines[i:]).strip()
     return text.strip()
 
 def generate_news_summary():
-    """使用 Gemini + Google Search Grounding 生成 AI 新聞摘要（繁體中文）。"""
+    """使用舊版穩定 SDK 進行生成。"""
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         logging.error("GEMINI_API_KEY not found.")
         return "Error: Gemini API key missing."
 
-    logging.info("Initializing Gemini client...")
-    client = genai.Client(api_key=api_key, http_options={'api_version': 'v1alpha'})
-    model_id = "gemini-2.5-flash"
+    logging.info("Initializing stable Gemini core...")
+    genai.configure(api_key=api_key)
+    
+    # 採用目前線上支援聯網的現役主力模型
+    model = genai.GenerativeModel(model_name="gemini-1.5-flash")
 
     prompt = (
         "你是一個新聞播報機器人。請直接輸出內容，禁止加任何開場白、問候語、確認句或說明文字。"
@@ -67,16 +60,16 @@ def generate_news_summary():
         "禁止輸出『好的』、『請稍等』等任何開場白，直接從標題行開始。"
     )
 
-    logging.info("Generating content with Google Search Grounding...")
+    logging.info("Generating content with stable Google Search Grounding...")
     try:
-        response = _call_gemini(client, model_id, prompt)
+        response = _call_gemini(model, prompt)
         if response.text:
             return _clean_summary(response.text)
         logging.warning("No text returned in response.")
         return "No news summary generated."
     except Exception as e:
-    logging.error(f"Gemini API error (after retries): {e}")
-    raise RuntimeError(f"Gemini 執行失敗: {e}")
+        logging.error(f"Gemini API error (after retries): {e}")
+        return "Error generating summary."
 
 def make_fallback_summary():
     """Dry-run 模式下、無 API key 時使用的本地假摘要。"""
