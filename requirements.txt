@@ -1,4 +1,4 @@
-google-genai
+google-generativeai==0.8.3
 line-bot-sdk<3.0.0
 tenacity
 flask
